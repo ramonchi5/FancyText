@@ -1,0 +1,9 @@
+.vs/
+.dotnet/
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.pdb
+*.log

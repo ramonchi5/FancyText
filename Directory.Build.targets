@@ -1,0 +1,21 @@
+<Project>
+  <Target Name="CopyComponentToSiblingLiveSplitArtifacts"
+          AfterTargets="Build"
+          Condition="'$(CopyToLiveSplitArtifacts)' == 'true' and Exists('$(LiveSplitRepoPath)') and Exists('$(TargetPath)')">
+    <PropertyGroup>
+      <LiveSplitComponentArtifactsPath>$(LiveSplitRepoPath)artifacts\bin\$(MSBuildProjectName)\$(LiveSplitArtifactsConfiguration)\</LiveSplitComponentArtifactsPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ComponentArtifactFiles Include="$(TargetPath)" />
+      <ComponentArtifactFiles Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(LiveSplitComponentArtifactsPath)" />
+    <Copy SourceFiles="@(ComponentArtifactFiles)"
+          DestinationFolder="$(LiveSplitComponentArtifactsPath)"
+          SkipUnchangedFiles="true" />
+    <Message Importance="high"
+             Text="Copied @(ComponentArtifactFiles->'%(Filename)%(Extension)', ', ') to $(LiveSplitComponentArtifactsPath)" />
+  </Target>
+</Project>

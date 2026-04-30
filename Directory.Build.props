@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep this component repo self-contained even when cloned next to LiveSplit. -->
+  <PropertyGroup>
+    <UseArtifactsOutput>false</UseArtifactsOutput>
+    <CopyToLiveSplitArtifacts Condition="'$(CopyToLiveSplitArtifacts)' == ''">true</CopyToLiveSplitArtifacts>
+    <LiveSplitRepoPath Condition="'$(LiveSplitRepoPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\LiveSplit\'))</LiveSplitRepoPath>
+    <LiveSplitArtifactsConfiguration Condition="'$(LiveSplitArtifactsConfiguration)' == ''">$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</LiveSplitArtifactsConfiguration>
+  </PropertyGroup>
+</Project>

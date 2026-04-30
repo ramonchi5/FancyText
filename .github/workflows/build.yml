@@ -1,0 +1,31 @@
+name: build
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: setup dotnet
+        uses: actions/setup-dotnet@v3
+
+      - name: dotnet restore
+        run: dotnet restore .\FancyText.sln
+
+      - name: Build
+        run: dotnet build .\FancyText.sln -c Release --no-restore
+
+      - name: publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: bin\Release\LiveSplit.FancyText.dll
