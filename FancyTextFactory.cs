@@ -14,7 +14,7 @@ namespace LiveSplit.UI.Components
 {
     public class FancyTextFactory : IComponentFactory
     {
-        public string ComponentName => "FancyText";
+        public string ComponentName => "Fancy Text";
 
         public string Description =>
             "Configurable label with gradient text colors, custom outline sizes, " +
