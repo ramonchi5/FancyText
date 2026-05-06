@@ -137,13 +137,57 @@ namespace LiveSplit.UI.Components
         [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
         private static void DrawInstanceTextReplacement(object instance, Graphics g, string text, Font font, Color textColor, RectangleF rect, StringFormat format, LayoutSettings settings)
         {
-            DrawText(g, text, font, textColor, rect, format, settings);
+            try
+            {
+                DrawText(g, text, font, textColor, rect, format, settings);
+            }
+            catch
+            {
+                DrawPlainFallback(g, text, font, textColor, rect, format);
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
         private static void DrawStaticTextReplacement(Graphics g, string text, Font font, Color textColor, RectangleF rect, StringFormat format, LayoutSettings settings)
         {
-            DrawText(g, text, font, textColor, rect, format, settings);
+            try
+            {
+                DrawText(g, text, font, textColor, rect, format, settings);
+            }
+            catch
+            {
+                DrawPlainFallback(g, text, font, textColor, rect, format);
+            }
+        }
+
+        private static void DrawPlainFallback(Graphics g, string text, Font font, Color textColor, RectangleF rect, StringFormat format)
+        {
+            if (g == null || string.IsNullOrEmpty(text) || font == null)
+            {
+                return;
+            }
+
+            try
+            {
+                using (var fallbackFormat = format != null ? new StringFormat(format) : new StringFormat())
+                using (var brush = new SolidBrush(textColor))
+                {
+                    if (rect.Width <= 0f || rect.Height <= 0f)
+                    {
+                        SizeF measured = g.MeasureString(text, font);
+                        rect = new RectangleF(
+                            rect.X,
+                            rect.Y,
+                            Math.Max(1f, measured.Width),
+                            Math.Max(1f, measured.Height));
+                    }
+
+                    g.DrawString(text, font, brush, rect, fallbackFormat);
+                }
+            }
+            catch
+            {
+            }
         }
 
         private static void DrawText(Graphics g, string text, Font font, Color textColor, RectangleF rect, StringFormat format, LayoutSettings settings)
@@ -206,7 +250,7 @@ namespace LiveSplit.UI.Components
                         {
                             if (overrideShadow)
                             {
-                                DrawCustomShadow(g, text, font, fontSize, textBox, nearFormat, effects);
+                                DrawCustomShadowWithClip(g, text, font, fontSize, textBox, nearFormat, effects);
                             }
                             else
                             {
@@ -281,6 +325,26 @@ namespace LiveSplit.UI.Components
             return Math.Max(1f, measured.Height);
         }
 
+        private static void DrawCustomShadowWithClip(Graphics g, string text, Font font, float fontSize, RectangleF textBox, StringFormat format, FancyTextResolvedEffects effects)
+        {
+            GraphicsState saved = g.Save();
+            try
+            {
+                g.ResetClip();
+                if (effects.ShadowClipToRow)
+                {
+                    RectangleF rowClip = new RectangleF(-100000f, textBox.Y, 200000f, Math.Max(1f, textBox.Height));
+                    g.SetClip(rowClip, CombineMode.Replace);
+                }
+
+                DrawCustomShadow(g, text, font, fontSize, textBox, format, effects);
+            }
+            finally
+            {
+                g.Restore(saved);
+            }
+        }
+
         private static void DrawCustomShadow(Graphics g, string text, Font font, float fontSize, RectangleF textBox, StringFormat format, FancyTextResolvedEffects effects)
         {
             if (effects.ShadowNormalEnabled)
@@ -291,34 +355,36 @@ namespace LiveSplit.UI.Components
 
         private static void DrawCustomShadowLayer(Graphics g, string text, Font font, float fontSize, RectangleF textBox, StringFormat format, FancyTextResolvedEffects effects, FancyTextShadowMode mode)
         {
-            float blurRadius = Math.Max(0f, effects.ShadowBlur);
             float offset = Math.Max(0f, effects.ShadowSize);
+            float expansion = GetShadowExpansion(effects, fontSize);
 
-            if (offset <= 0f && blurRadius <= 0f)
+            if (offset <= 0f && expansion <= 0.001f && effects.ShadowBlur <= 0f)
             {
                 return;
             }
 
             int multiply = GetShadowMultiply(effects);
-            bool useFixedBlur = blurRadius > 0f;
+            bool useFixedBlur = effects.ShadowBlur > 0f;
 
             if (mode == FancyTextShadowMode.Behind)
             {
+                using (GraphicsPath textPath = new GraphicsPath())
                 using (GraphicsPath shadowPath = new GraphicsPath())
-                using (SolidBrush shadowBrush = new SolidBrush(effects.ShadowColor))
+                using (SolidBrush shadowBrush = new SolidBrush(GetStackedShadowColor(effects.ShadowColor, 1f, multiply)))
                 {
-                    shadowPath.AddString(
+                    textPath.AddString(
                         text,
                         font.FontFamily,
                         (int)font.Style,
                         fontSize,
-                        new RectangleF(textBox.X + offset, textBox.Y + offset, 9999f, 9999f),
+                        new RectangleF(textBox.X, textBox.Y, 9999f, 9999f),
                         format);
+                    BuildShadowPath(textPath, shadowPath, expansion, offset);
 
                     if (useFixedBlur)
                         DrawFixedBlurShadow(g, shadowPath, null, effects.ShadowColor, mode, multiply);
                     else
-                        FillPathRepeated(g, shadowPath, shadowBrush, GetShadowMultiply(effects));
+                        g.FillPath(shadowBrush, shadowPath);
                 }
                 return;
             }
@@ -328,20 +394,14 @@ namespace LiveSplit.UI.Components
                 textPath.AddString(text, font.FontFamily, (int)font.Style, fontSize, new RectangleF(textBox.X, textBox.Y, 9999f, 9999f), format);
 
                 using (GraphicsPath shadowPath = new GraphicsPath())
-                using (SolidBrush shadowBrush = new SolidBrush(effects.ShadowColor))
+                using (SolidBrush shadowBrush = new SolidBrush(GetStackedShadowColor(effects.ShadowColor, 1f, multiply)))
                 {
-                    shadowPath.AddString(
-                        text,
-                        font.FontFamily,
-                        (int)font.Style,
-                        fontSize,
-                        new RectangleF(textBox.X + offset, textBox.Y + offset, 9999f, 9999f),
-                        format);
+                    BuildShadowPath(textPath, shadowPath, expansion, offset);
 
                     if (useFixedBlur)
                         DrawFixedBlurShadow(g, shadowPath, textPath, effects.ShadowColor, mode, multiply);
                     else
-                        FillShadowPath(g, shadowPath, textPath, shadowBrush, mode, multiply);
+                        FillShadowPath(g, shadowPath, textPath, shadowBrush, mode);
                 }
             }
         }
@@ -377,7 +437,7 @@ namespace LiveSplit.UI.Components
                         {
                             matrix.Translate(offset.X, offset.Y);
                             shiftedPath.Transform(matrix);
-                            FillShadowPath(g, shiftedPath, textPath, brush, mode, 1);
+                            FillShadowPath(g, shiftedPath, textPath, brush, mode);
                         }
                     }
                 }
@@ -388,7 +448,7 @@ namespace LiveSplit.UI.Components
         {
             double alpha = Math.Max(0d, Math.Min(1d, (color.A / 255d) * weight));
             if (multiply > 1)
-                alpha = 1d - Math.Pow(1d - alpha, Math.Max(1, Math.Min(8, multiply)));
+                alpha = 1d - Math.Pow(1d - alpha, Math.Max(1, Math.Min(1000, multiply)));
 
             int a = Math.Max(0, Math.Min(255, (int)Math.Round(alpha * 255d)));
             return Color.FromArgb(a, color.R, color.G, color.B);
@@ -399,14 +459,62 @@ namespace LiveSplit.UI.Components
             if (effects == null)
                 return 1;
 
-            return Math.Max(1, Math.Min(8, effects.ShadowMultiply));
+            return Math.Max(1, Math.Min(1000, effects.ShadowMultiply));
         }
 
-        private static void FillShadowPath(Graphics g, GraphicsPath shadowPath, GraphicsPath textPath, Brush brush, FancyTextShadowMode mode, int multiply)
+        private static float GetShadowExpansion(FancyTextResolvedEffects effects, float fontSize)
+        {
+            if (effects == null)
+                return 0f;
+
+            float percent = Math.Max(100f, Math.Min(500f, effects.ShadowSizePercent));
+            return fontSize * ((percent - 100f) / 100f) * 0.3f;
+        }
+
+        private static void BuildShadowPath(GraphicsPath textPath, GraphicsPath shadowPath, float expansion, float offset)
+        {
+            shadowPath.Reset();
+            shadowPath.FillMode = FillMode.Winding;
+            shadowPath.AddPath(textPath, false);
+
+            if (expansion > 0.001f)
+            {
+                try
+                {
+                    using (GraphicsPath expandedPath = (GraphicsPath)textPath.Clone())
+                    using (Pen expansionPen = new Pen(Color.Black, expansion * 2f))
+                    {
+                        expandedPath.FillMode = FillMode.Winding;
+                        expansionPen.LineJoin = LineJoin.Round;
+                        expansionPen.StartCap = LineCap.Round;
+                        expansionPen.EndCap = LineCap.Round;
+                        expandedPath.Widen(expansionPen);
+                        shadowPath.AddPath(expandedPath, false);
+                        shadowPath.AddPath(textPath, false);
+                    }
+                }
+                catch
+                {
+                    // Some symbol fonts can produce paths that Widen cannot process.
+                    // In that case, keep the normal shadow rather than risking a draw crash.
+                }
+            }
+
+            if (Math.Abs(offset) > 0.001f)
+            {
+                using (Matrix matrix = new Matrix())
+                {
+                    matrix.Translate(offset, offset);
+                    shadowPath.Transform(matrix);
+                }
+            }
+        }
+
+        private static void FillShadowPath(Graphics g, GraphicsPath shadowPath, GraphicsPath textPath, Brush brush, FancyTextShadowMode mode)
         {
             if (mode == FancyTextShadowMode.Behind)
             {
-                FillPathRepeated(g, shadowPath, brush, multiply);
+                g.FillPath(brush, shadowPath);
                 return;
             }
 
@@ -417,15 +525,8 @@ namespace LiveSplit.UI.Components
                 else
                     region.Intersect(shadowPath);
 
-                for (int i = 0; i < multiply; i++)
-                    g.FillRegion(brush, region);
+                g.FillRegion(brush, region);
             }
-        }
-
-        private static void FillPathRepeated(Graphics g, GraphicsPath path, Brush brush, int multiply)
-        {
-            for (int i = 0; i < multiply; i++)
-                g.FillPath(brush, path);
         }
 
         private static Brush CreateFillBrush(FancyTextResolvedEffects effects, Color baseColor, RectangleF rect)

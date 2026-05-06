@@ -35,8 +35,10 @@ namespace LiveSplit.UI.Components
         public bool ShadowOutsideEnabled { get; internal set; }
         public Color ShadowColor { get; internal set; }
         public float ShadowSize { get; internal set; }
+        public int ShadowSizePercent { get; internal set; }
         public float ShadowBlur { get; internal set; }
         public int ShadowMultiply { get; internal set; }
+        public bool ShadowClipToRow { get; internal set; }
 
         public bool HasGradient { get; internal set; }
         public bool UseExistingColorMiddle { get; internal set; }
@@ -161,6 +163,7 @@ namespace LiveSplit.UI.Components
             lock (Sync)
             {
                 ActiveInstances.Remove(owner);
+                PendingReorders.Remove(owner);
             }
         }
 
@@ -452,8 +455,10 @@ namespace LiveSplit.UI.Components
                     ShadowOutsideEnabled = settings.ShadowOutsideEnabled,
                     ShadowColor = settings.ShadowColor,
                     ShadowSize = settings.ShadowSize,
+                    ShadowSizePercent = settings.ShadowSizePercent,
                     ShadowBlur = settings.ShadowBlur,
                     ShadowMultiply = settings.ShadowMultiply,
+                    ShadowClipToRow = settings.ShadowClipToRow,
                     HasGradient = settings.OverrideTextColors,
                     UseExistingColorMiddle = settings.GradientMode == FancyTextGradientMode.ExistingColors,
                     GradientColor1 = settings.TextColor1,
@@ -524,8 +529,10 @@ namespace LiveSplit.UI.Components
                 merged.ShadowOutsideEnabled = next.ShadowOutsideEnabled;
                 merged.ShadowColor = next.ShadowColor;
                 merged.ShadowSize = next.ShadowSize;
+                merged.ShadowSizePercent = next.ShadowSizePercent;
                 merged.ShadowBlur = next.ShadowBlur;
                 merged.ShadowMultiply = next.ShadowMultiply;
+                merged.ShadowClipToRow = next.ShadowClipToRow;
             }
 
             if (next.HasGradient)
@@ -740,8 +747,15 @@ namespace LiveSplit.UI.Components
 
         public void DrawHorizontal(Graphics g, LiveSplitState state, float height, Region clipRegion)
         {
-            using (FancyTextRuntime.BeginComponentDraw(state, Inner))
-            using (new LayoutSettingsScope(state, FancyTextRuntime.GetEffectsForComponent(state, Inner)))
+            try
+            {
+                using (FancyTextRuntime.BeginComponentDraw(state, Inner))
+                using (new LayoutSettingsScope(state, FancyTextRuntime.GetEffectsForComponent(state, Inner)))
+                {
+                    Inner.DrawHorizontal(g, state, height, clipRegion);
+                }
+            }
+            catch
             {
                 Inner.DrawHorizontal(g, state, height, clipRegion);
             }
@@ -749,8 +763,15 @@ namespace LiveSplit.UI.Components
 
         public void DrawVertical(Graphics g, LiveSplitState state, float width, Region clipRegion)
         {
-            using (FancyTextRuntime.BeginComponentDraw(state, Inner))
-            using (new LayoutSettingsScope(state, FancyTextRuntime.GetEffectsForComponent(state, Inner)))
+            try
+            {
+                using (FancyTextRuntime.BeginComponentDraw(state, Inner))
+                using (new LayoutSettingsScope(state, FancyTextRuntime.GetEffectsForComponent(state, Inner)))
+                {
+                    Inner.DrawVertical(g, state, width, clipRegion);
+                }
+            }
+            catch
             {
                 Inner.DrawVertical(g, state, width, clipRegion);
             }

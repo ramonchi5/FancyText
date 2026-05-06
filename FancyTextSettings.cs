@@ -65,9 +65,14 @@ namespace LiveSplit.UI.Components
         public Color ShadowColor        { get; private set; } = Color.Black;
         // How many pixels the shadow shifts from the text.
         public float ShadowSize         { get; private set; } = 2.0f;
+        // Percent expansion for the shadow glyphs. 100 = same size as the text.
+        public int   ShadowSizePercent  { get; private set; } = 100;
         // Fixed low-cost blur. Stored as 0 or 1 for layout compatibility.
         public float ShadowBlur         { get; private set; } = 0f;
         public int   ShadowMultiply     { get; private set; } = 1;
+        public bool  ShadowClipToRow    { get; private set; } = false;
+        // Retained for old layouts. Blend was removed from the UI because it multiplies blur work.
+        public int   ShadowBlend        { get; private set; } = 1;
 
         // Scope / targeting
         public FancyTextScopeMode    ScopeMode         { get; private set; } = FancyTextScopeMode.AllComponents;
@@ -111,8 +116,10 @@ namespace LiveSplit.UI.Components
         private Button        _shadowColorBtn;
         private Label         _shadowColorLabel;
         private NumericUpDown _shadowSizeNum;
+        private NumericUpDown _shadowSizePercentNum;
         private CheckBox      _shadowBlurChk;
         private NumericUpDown _shadowMultiplyNum;
+        private CheckBox      _shadowClipToRowChk;
 
         // Target controls
         private RadioButton _rdoScopeThis;
@@ -364,17 +371,17 @@ namespace LiveSplit.UI.Components
             };
             topRow.Controls.Add(_overrideShadowChk);
 
-            _shadowColorLabel = MakeLbl("Shadow Color:");
+            _shadowColorLabel = MakeTinyLbl("Color");
+            topRow.Controls.Add(_shadowColorLabel);
             _shadowColorBtn = MakeColorBtn(ShadowColor);
             _shadowColorBtn.Click += (s, e) =>
             {
                 SettingsHelper.ColorButtonClick(_shadowColorBtn, this);
                 ShadowColor = _shadowColorBtn.BackColor;
             };
-            AddCompactControl(topRow, "Color", _shadowColorBtn);
-            panel.Controls.Add(topRow);
+            topRow.Controls.Add(_shadowColorBtn);
 
-            var layerRow = MakeCompactRow();
+            topRow.Controls.Add(MakeTinyLbl("Mode"));
             _shadowEnabledChk = MakeCompactRadio("Normal", ShadowNormalEnabled);
             _shadowEnabledChk.CheckedChanged += (s, e) =>
             {
@@ -385,7 +392,7 @@ namespace LiveSplit.UI.Components
                     UpdateShadowControlStates();
                 }
             };
-            layerRow.Controls.Add(_shadowEnabledChk);
+            topRow.Controls.Add(_shadowEnabledChk);
 
             _shadowOutsideEnabledChk = MakeCompactRadio("Outside Only", ShadowOutsideEnabled);
             _shadowOutsideEnabledChk.CheckedChanged += (s, e) =>
@@ -397,22 +404,31 @@ namespace LiveSplit.UI.Components
                     UpdateShadowControlStates();
                 }
             };
-            layerRow.Controls.Add(_shadowOutsideEnabledChk);
-            panel.Controls.Add(layerRow);
+            topRow.Controls.Add(_shadowOutsideEnabledChk);
+
+            _shadowBlurChk = MakeCompactCheck("Blur", ShadowBlur > 0f);
+            _shadowBlurChk.CheckedChanged += (s, e) =>
+                ShadowBlur = _shadowBlurChk.Checked ? 1f : 0f;
+            topRow.Controls.Add(_shadowBlurChk);
+            panel.Controls.Add(topRow);
 
             var valueRow = MakeCompactRow();
             _shadowSizeNum = MakeCompactNumeric(ShadowSize, 0f, 20f, 1, 0.5m);
             _shadowSizeNum.ValueChanged += (s, e) => ShadowSize = (float)_shadowSizeNum.Value;
             AddCompactControl(valueRow, "Offset", _shadowSizeNum);
 
-            _shadowBlurChk = MakeCompactCheck("Blur", ShadowBlur > 0f);
-            _shadowBlurChk.CheckedChanged += (s, e) =>
-                ShadowBlur = _shadowBlurChk.Checked ? 1f : 0f;
-            valueRow.Controls.Add(_shadowBlurChk);
+            _shadowSizePercentNum = MakeCompactNumeric(ShadowSizePercent, 100f, 500f, 0, 1m);
+            _shadowSizePercentNum.ValueChanged += (s, e) => ShadowSizePercent = (int)_shadowSizePercentNum.Value;
+            AddCompactControl(valueRow, "Size", _shadowSizePercentNum);
 
-            _shadowMultiplyNum = MakeCompactNumeric(ShadowMultiply, 1f, 8f, 0, 1m);
+            _shadowMultiplyNum = MakeCompactNumeric(ShadowMultiply, 1f, 1000f, 0, 1m);
             _shadowMultiplyNum.ValueChanged += (s, e) => ShadowMultiply = (int)_shadowMultiplyNum.Value;
-            AddCompactControl(valueRow, "Multiply", _shadowMultiplyNum);
+            AddCompactControl(valueRow, "Strength", _shadowMultiplyNum);
+
+            _shadowClipToRowChk = MakeCompactCheck("Clip row", ShadowClipToRow);
+            _shadowClipToRowChk.CheckedChanged += (s, e) => ShadowClipToRow = _shadowClipToRowChk.Checked;
+            valueRow.Controls.Add(_shadowClipToRowChk);
+
             panel.Controls.Add(valueRow);
 
             UpdateShadowControlStates();
@@ -428,8 +444,10 @@ namespace LiveSplit.UI.Components
             if (_shadowColorBtn    != null) _shadowColorBtn.Enabled    = ov;
             if (_shadowColorLabel  != null) _shadowColorLabel.Enabled  = ov;
             if (_shadowSizeNum     != null) _shadowSizeNum.Enabled     = any;
+            if (_shadowSizePercentNum != null) _shadowSizePercentNum.Enabled = any;
             if (_shadowBlurChk    != null) _shadowBlurChk.Enabled    = any;
             if (_shadowMultiplyNum != null) _shadowMultiplyNum.Enabled = any;
+            if (_shadowClipToRowChk != null) _shadowClipToRowChk.Enabled = any;
         }
 
         // Scope / targeting
@@ -633,8 +651,11 @@ namespace LiveSplit.UI.Components
             W(document, root, "ShadowOutsideEnabled", ShadowOutsideEnabled.ToString());
             W(document, root, "ShadowColor",        ColorToHex(ShadowColor));
             W(document, root, "ShadowSize",         ShadowSize.ToString(CultureInfo.InvariantCulture));
+            W(document, root, "ShadowSizePercent",  ShadowSizePercent.ToString(CultureInfo.InvariantCulture));
             W(document, root, "ShadowBlur",         ShadowBlur.ToString(CultureInfo.InvariantCulture));
             W(document, root, "ShadowMultiply",     ShadowMultiply.ToString(CultureInfo.InvariantCulture));
+            W(document, root, "ShadowClipToRow",    ShadowClipToRow.ToString());
+            W(document, root, "ShadowBlend",        "1");
             W(document, root, "ScopeMode",          ScopeMode.ToString());
             W(document, root, "TargetComponents",   string.Join("|", TargetComponents));
             return root;
@@ -696,14 +717,21 @@ namespace LiveSplit.UI.Components
             if (_shadowOutsideEnabledChk != null) _shadowOutsideEnabledChk.Checked = ShadowOutsideEnabled;
             SetColorBtn(R(node, "ShadowColor"),   ref _shadowColorBtn,  c => ShadowColor = c);
             ParseFloat(R(node, "ShadowSize"),     f => { ShadowSize     = f;   if (_shadowSizeNum     != null) _shadowSizeNum.Value     = (decimal)Math.Min(20f, f); });
+            ParseInt(R(node, "ShadowSizePercent"), i =>
+            {
+                ShadowSizePercent = Math.Max(100, Math.Min(500, i));
+                SetNumericValue(_shadowSizePercentNum, ShadowSizePercent);
+            });
             string shadowBlur = R(node, "ShadowBlur") ?? R(node, "ShadowSoftness");
             ParseFloat(shadowBlur, f =>
             {
                 ShadowBlur = f > 0f ? 1f : 0f;
                 if (_shadowBlurChk != null) _shadowBlurChk.Checked = ShadowBlur > 0f;
             });
-            string shadowMultiply = R(node, "ShadowMultiply") ?? R(node, "ShadowPasses");
-            ParseInt(shadowMultiply, i => { ShadowMultiply = Math.Max(1, Math.Min(8, i)); SetNumericValue(_shadowMultiplyNum, ShadowMultiply); });
+            string shadowMultiply = R(node, "ShadowMultiply") ?? R(node, "ShadowStrength");
+            ParseInt(shadowMultiply, i => { ShadowMultiply = Math.Max(1, Math.Min(1000, i)); SetNumericValue(_shadowMultiplyNum, ShadowMultiply); });
+            ParseBool(R(node, "ShadowClipToRow"), b => { ShadowClipToRow = b; if (_shadowClipToRowChk != null) _shadowClipToRowChk.Checked = b; });
+            ShadowBlend = 1;
             UpdateShadowControlStates();
 
             if (TryParseEnum(R(node, "ScopeMode"), out FancyTextScopeMode scope))
